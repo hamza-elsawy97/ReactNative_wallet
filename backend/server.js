@@ -29,6 +29,22 @@ async function initDB() {
   }
 }
 
+// get all transactions by user ID
+app.get("/api/transactions/:user_Id", async (req, res) => {
+  try {
+    const { user_Id } = req.params;
+    const transactions = await sql `
+    SELECT * FROM transactions WHERE user_id = ${user_Id} ORDER BY created_at DESC
+    `;
+    
+    res.status(200).json(transactions);
+  } catch (error) {
+    console.log("Error getting the user transactions:", error);
+    res.status(500).json({  message: "Internal server error" });
+  }
+})
+
+// post transactions
 app.post("/api/transactions", async (req, res) => {
   try {
     const { user_id, title, amount, category} = req.body;
@@ -49,9 +65,59 @@ app.post("/api/transactions", async (req, res) => {
   }
 });
 
-// app.get("/", (req, res) => {
-//     res.send("This is working !!");
-// })
+// delete transaction
+app.delete("/api/transactions/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if(isNAN(parseInt(id))){
+      return res.status(400).json({ message: "Invalid transaction ID" });
+    }
+    const result = await sql `
+    DELETE FROM transactions WHERE id = ${id} RETURNING *
+        
+    `;
+    if (result.length === 0){
+      return res.status(404).json({ message: "transaction not found" });
+    }
+    res.status(200).json({ message: "Transaction deleted successfully" });
+
+  } catch (error) {
+    console.log("Error api delete transaction:", error);
+    res.status(500).json({  message: "Internal server error" });
+  }
+})
+
+// Get summary of all transactions 
+app.get("/api/transactions/summary/:userId", async (req, res) => {
+  try {
+    const { userId } = req.params;
+    
+    const balanceResult = await sql `
+      SELECT COALESCE(SUM(amount), 0) as balance FROM transactions WHERE user_id = ${userId}
+    `
+
+    const incomeResult = await sql `
+      SELECT COALESCE(SUM(amount), 0) as income FROM transactions 
+      WHERE user_id = ${userId} AND amount > 0
+    `
+
+    const expensesResult = await sql `
+      SELECT COALESCE(SUM(amount), 0) as expenses FROM transactions 
+      WHERE user_id = ${userId} AND amount < 0
+    `
+
+    res.status(200).json({
+      balance: balanceResult[0].balance,
+      income: incomeResult[0].income,
+      expenses: expensesResult[0].expenses
+    });
+    
+  } catch (error) {
+    console.log("Error getting summary of transactions:", error);
+    res.status(500).json({  message: "Internal server error" });
+  }
+})
 
 initDB().then(() => {
   app.listen(PORT, () => {
